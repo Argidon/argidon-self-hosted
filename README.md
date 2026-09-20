@@ -1,1 +1,111 @@
-# argidon-self-hosted
+# infra/
+
+Operational infrastructure for this project — Docker Swarm orchestration,
+self-hosted Supabase, backups, and monitoring/alerting.
+
+## Architecture
+
+```mermaid
+flowchart TB
+   users[Browser and mobile clients]
+   sources[External weather, geospatial, and flight data sources]
+   backupTarget[(Off-node S3-compatible backup storage)]
+
+   subgraph host[Single host: Swarm manager and Supabase Compose project]
+      subgraph network[mhews overlay network]
+         subgraph swarm[Docker Swarm]
+            subgraph core[Core services]
+               frontend[frontend]
+               aggregator[aggregator]
+               netcdf[netcdf-service]
+               tileserver[tileserver]
+            end
+
+            subgraph jobs[Importer Swarm Jobs]
+               scheduler[swarm-cronjob]
+               raster[Raster importer jobs]
+               wind[Wind importer jobs]
+            end
+
+            subgraph monitoring[Monitoring and alerting]
+               prometheus[Prometheus]
+               grafana[Grafana]
+               alertmanager[Alertmanager]
+               loki[Loki and Promtail]
+               exporters[cAdvisor, node-exporter, postgres_exporter, Blackbox Exporter]
+               pushgateway[Pushgateway]
+            end
+         end
+
+         subgraph compose[Docker Compose: self-hosted Supabase]
+            api[API gateway]
+            postgres[(Postgres)]
+            storage[Storage]
+            supabaseServices[Auth, Realtime, Studio, and Edge Functions]
+         end
+      end
+
+      backup[backup.sh: nightly pg_dump and Storage archive]
+   end
+
+   users --> frontend
+   users -->|Public HTTPS| api
+   frontend --> aggregator
+   aggregator -->|Private API access| api
+   aggregator --> netcdf
+   aggregator --> tileserver
+   scheduler -->|Schedules and triggers| raster
+   scheduler -->|Schedules and triggers| wind
+   sources --> raster
+   sources --> wind
+   raster -->|Writes data| api
+   wind -->|Writes data| api
+   api --> postgres
+   api --> storage
+
+   exporters -->|Metrics| prometheus
+   prometheus --> grafana
+   loki --> grafana
+   prometheus --> alertmanager
+   backup -->|Success heartbeat| pushgateway
+   pushgateway --> prometheus
+   postgres -->|Nightly dump| backup
+   storage -->|Nightly archive| backup
+   backup --> backupTarget
+```
+
+The Docker Compose Supabase project is not a Swarm service; it shares the
+`mhews` overlay network with the Swarm stacks so internal services use the
+private API gateway while browsers and mobile clients use Supabase's public
+HTTPS endpoint. Grafana visualizes Prometheus metrics and Loki logs; Prometheus
+also evaluates the backup heartbeat sent through Pushgateway and forwards
+alerts to Alertmanager.
+
+## Layout
+
+| Folder | What it is | Read first |
+|---|---|---|
+| [`swarm/`](./swarm/README.md) | Docker Swarm bootstrap, core services, all importer Jobs, the `swarm-cronjob` scheduler | `swarm/README.md` |
+| [`supabase/`](./supabase/README.md) | Self-hosted Supabase, plain Docker Compose, on the same machine as the Swarm manager | `supabase/README.md` |
+| [`backups/`](./backups/README.md) | Nightly Postgres + Storage backups, off-node, with restore drills | `backups/README.md` |
+| [`monitoring/`](./monitoring/README.md) | Prometheus, Grafana, Alertmanager, Loki/Promtail, exporters | `monitoring/README.md` |
+
+## Prerequisites
+
+- Docker Engine **20.10+** on the node (Swarm Jobs — `--mode
+  replicated-job`/`global-job` — require this; older Engines can join the
+  Swarm but can't run Job-mode services).
+- Outbound network access from this node to: NOAA NOMADS/NCEP, Copernicus
+  CDS/CAMS/Marine, HDX, Microsoft's building-footprints blob storage,
+  OpenStreetMap/Overpass, and whatever off-node backup storage target you
+  choose (§`backups/`). Supabase itself no longer needs a separate
+  network path from the Swarm cluster — see `supabase/README.md`'s
+  "Networking: same machine as the Swarm cluster".
+
+## Install order
+
+Practical order:
+
+1. install docker with install-docker.sh script
+2. install docker network with install-network.sh script
+3. install supabase

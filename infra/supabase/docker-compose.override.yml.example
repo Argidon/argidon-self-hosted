@@ -1,0 +1,29 @@
+# infra/supabase/docker-compose.override.yml.example
+#
+# Copy to docker/docker-compose.override.yml after ./setup.sh has run
+# (docker-compose.override.yml is Docker Compose's own standard override
+# filename — auto-loaded by `docker compose`/`run.sh` with no `config
+# add`/COMPOSE_FILE change needed, and update.sh already treats it as
+# user-owned state it preserves across upgrades, not vendor content it
+# overwrites).
+#
+# Attaches this node's API gateway AND its Postgres (`db`) service to the
+# `mhews` Swarm overlay network (created by ../install.sh) — only valid
+# when this node runs on the same machine as the Swarm manager. `api-gw`
+# lets `aggregator` reach it directly at http://api-gw:8000 instead of
+# round-tripping through the public internet; `db` lets
+# ../swarm/stacks/backup-jobs.yml's backup/restore Jobs reach Postgres
+# directly (`pg_dump`/`pg_restore` over the network) with no Docker
+# socket access needed. See README.md's "Networking: same machine as the
+# Swarm cluster".
+services:
+  api-gw:
+    networks:
+      mhews: {}
+  db:
+    networks:
+      mhews: {}
+
+networks:
+  mhews:
+    external: true
