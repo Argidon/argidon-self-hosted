@@ -26,8 +26,8 @@
 #   sh setup.sh --ref self-hosted/v0.7.0   # clone docker/ from a specific git ref
 #   sh setup.sh --head                     # clone docker/ from HEAD (skip tags)
 #
-#   curl -fsSL <url-to-this-script> | sh   # bootstrap from scratch in CWD
-#
+# Run this from inside an existing checkout of this repo (see README.md's
+# "cd ./infra/supabase" step) — it does not clone the repo itself.
 # By default the docker/ sources are cloned from the latest self-hosted release
 # tag (self-hosted/v*), falling back to the default branch (HEAD) if none exist.
 #
@@ -38,8 +38,14 @@
 # If you want to use suggested installation defaults, simply run the script 
 #without any additional options.
 set -e
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 curl -fsSL https://supabase.link/setup.sh | sh -s -- --project-dir docker --with-aws  --ref self-hosted/v0.8.0 "$@"
+
+sh run.sh start
+sh run.sh config add nginx
+cp docker-compose.override.yml.example docker/docker-compose.override.yml
+cd "$SCRIPT_DIR"/docker
+sh run.sh recreate
+sh run.sh secrets
