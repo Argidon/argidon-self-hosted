@@ -85,10 +85,10 @@ alerts to Alertmanager.
 
 | Folder | What it is | Read first |
 |---|---|---|
-| [`swarm/`](./swarm/README.md) | Docker Swarm bootstrap, core services, all importer Jobs, the `swarm-cronjob` scheduler | `swarm/README.md` |
-| [`supabase/`](./supabase/README.md) | Self-hosted Supabase, plain Docker Compose, on the same machine as the Swarm manager | `supabase/README.md` |
-| [`backups/`](./backups/README.md) | Nightly Postgres + Storage backups, off-node, with restore drills | `backups/README.md` |
-| [`monitoring/`](./monitoring/README.md) | Prometheus, Grafana, Alertmanager, Loki/Promtail, exporters | `monitoring/README.md` |
+| [`infra/swarm/`](./infra/swarm/README.md) | Docker Swarm bootstrap, core services, all importer Jobs, the `swarm-cronjob` scheduler (not yet added) | `infra/swarm/README.md` |
+| [`infra/supabase/`](./infra/supabase/README.md) | Self-hosted Supabase, plain Docker Compose, on the same machine as the Swarm manager | `infra/supabase/README.md` |
+| [`infra/backups/`](./infra/backups/README.md) | Nightly Postgres + Storage backups, off-node, with restore drills (not yet added) | `infra/backups/README.md` |
+| [`infra/monitoring/`](./infra/monitoring/README.md) | Prometheus, Grafana, Alertmanager, Loki/Promtail, exporters (not yet added) | `infra/monitoring/README.md` |
 
 ## Prerequisites
 
@@ -98,14 +98,22 @@ alerts to Alertmanager.
 - Outbound network access from this node to: NOAA NOMADS/NCEP, Copernicus
   CDS/CAMS/Marine, HDX, Microsoft's building-footprints blob storage,
   OpenStreetMap/Overpass, and whatever off-node backup storage target you
-  choose (§`backups/`). Supabase itself no longer needs a separate
-  network path from the Swarm cluster — see `supabase/README.md`'s
-  "Networking: same machine as the Swarm cluster".
+  choose (§`infra/backups/`). Supabase shares the `mhews` overlay network
+  with the Swarm stacks on the same node instead of a separate network
+  path — see `infra/supabase/README.md`.
 
 ## Install order
 
-Practical order:
+Run these from the repo root, on the target node:
 
-1. install docker with install-docker.sh script
-2. install docker network with install-network.sh script
-3. install supabase
+```sh
+cd infra
+sudo ./install-docker.sh        # installs Docker Engine, inits this node as a Swarm manager
+sudo ./install-network.sh       # creates the attachable 'mhews' Swarm overlay network
+cd supabase
+sudo ./setup.sh                      # see infra/supabase/README.md for the full walkthrough
+```
+
+`infra/supabase/README.md` covers the rest in detail, including the
+interactive URL/domain prompts, the free `sslip.io` option if you don't have
+a domain yet, and the firewall/Security Group ports each option needs open.

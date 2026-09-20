@@ -43,9 +43,22 @@ cd "$SCRIPT_DIR"
 
 curl -fsSL https://supabase.link/setup.sh | sh -s -- --project-dir docker --with-aws  --ref self-hosted/v0.8.0 "$@"
 
+echo "==> Starting the Supabase stack"
+cd "$SCRIPT_DIR"/docker
 sh run.sh start
+
+echo "==> Adding the nginx HTTPS proxy override (docker-compose.nginx.yml)"
 sh run.sh config add nginx
+
+echo "==> Attaching api-gw/db to the mhews Swarm overlay network"
+cd "$SCRIPT_DIR"
 cp docker-compose.override.yml.example docker/docker-compose.override.yml
+
+echo "==> Recreating the stack to pick up the overrides"
 cd "$SCRIPT_DIR"/docker
 sh run.sh recreate
+
+echo "==> Generated secrets (keep this output private, see docker/.env)"
 sh run.sh secrets
+
+echo "==> Supabase is up. See README.md's remaining steps (DB roles, secrets.txt, HTTPS domain)."
