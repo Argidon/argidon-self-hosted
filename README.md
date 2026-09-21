@@ -98,9 +98,7 @@ alerts to Alertmanager.
 - Outbound network access from this node to: NOAA NOMADS/NCEP, Copernicus
   CDS/CAMS/Marine, HDX, Microsoft's building-footprints blob storage,
   OpenStreetMap/Overpass, and whatever off-node backup storage target you
-  choose (§`infra/backups/`). Supabase shares the `mhews` overlay network
-  with the Swarm stacks on the same node instead of a separate network
-  path — see `infra/supabase/README.md`.
+  choose (§`backups/`).
 
 ## Install order
 

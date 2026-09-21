@@ -1,0 +1,232 @@
+version: "3.9"
+
+# raster-importer Swarm Jobs — Deno TS, satellite/hazard raster ingestion.
+# 20 independent Job services: 15 with a `swarm.cronjob.*` schedule label
+# (schedule matches PLAN.md §3's job schedule table), 5 manual-only (no
+# schedule label — no scheduled equivalent existed before this migration
+# either; trigger with `docker service create --mode replicated-job ...`
+# or `docker service update --force <job-name>` when needed).
+#
+# All commands run against ghcr.io/argidon/mhews-raster-importer:latest,
+# built from raster-importer/Dockerfile (build context = repo root, matching
+# repo-root docker-compose.yml's existing `context: .`) and pushed to GHCR
+# by .github/workflows/docker-build-raster-importer.yml.
+#
+# swarm-cronjob labels use its 6-field cron format (seconds first):
+# sec min hour day-of-month month day-of-week.
+
+x-raster-job: &raster-job
+  image: ghcr.io/argidon/mhews-raster-importer:latest
+  networks:
+    - mhews
+  # env_file:
+  #   - ../env/.env
+
+x-raster-job-deploy: &raster-job-deploy
+  mode: replicated-job
+  restart_policy:
+    condition: on-failure
+    max_attempts: 3
+
+services:
+  # ── Scheduled (swarm-cronjob reads labels from `deploy.labels` — a
+  #    Swarm SERVICE's labels, not a container's top-level `labels:` —
+  #    since that's what `docker service inspect`/the Docker API expose to
+  #    label-watching tools like swarm-cronjob) ──────────────────────────
+  glofas-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-glofas.ts"]
+    environment:
+      - NETCDF_SERVICE_URL=http://netcdf-service:8000
+    # env_file:
+    #   - ../env/.env
+    #   - ../env/.env.local # EWDS_API_KEY — gitignored, optional, see swarm/README.md
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 0 2 * * *" # daily, 02:00 UTC
+        swarm.cronjob.skip-running: "true"
+
+  ghsl-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-ghsl.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 0 3 1 * *" # monthly, day 1, 03:00 UTC
+        swarm.cronjob.skip-running: "true"
+
+  gdo-anomaly-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-gdo-anomaly.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 10 3 1 * *" # monthly, day 1, 03:10 UTC
+        swarm.cronjob.skip-running: "true"
+
+  gdo-spi-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-gdo-spi.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 20 3 1 * *" # monthly, day 1, 03:20 UTC
+        swarm.cronjob.skip-running: "true"
+
+  chirps-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-chirps.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 30 3 1 * *" # monthly, day 1, 03:30 UTC
+        swarm.cronjob.skip-running: "true"
+
+  worldpop-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-worldpop.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 40 3 1 * *" # monthly, day 1, 03:40 UTC
+        swarm.cronjob.skip-running: "true"
+
+  hydrobasins-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-hydrobasins.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 50 3 1 * *" # monthly, day 1, 03:50 UTC
+        swarm.cronjob.skip-running: "true"
+
+  hydrorivers-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-hydrorivers.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 0 4 1 * *" # monthly, day 1, 04:00 UTC
+        swarm.cronjob.skip-running: "true"
+
+  osm-roads-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-osm-roads.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 0 5 * * 0" # weekly, Sunday, 05:00 UTC
+        swarm.cronjob.skip-running: "true"
+
+  osm-buildings-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-osm-buildings.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 10 5 * * 0" # weekly, Sunday, 05:10 UTC
+        swarm.cronjob.skip-running: "true"
+
+  osm-shelters-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-osm-shelters.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 20 5 * * 0" # weekly, Sunday, 05:20 UTC
+        swarm.cronjob.skip-running: "true"
+
+  osm-landuse-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-osm-landuse.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 30 5 * * 0" # weekly, Sunday, 05:30 UTC
+        swarm.cronjob.skip-running: "true"
+
+  kontur-population-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-kontur-population.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 40 5 * * 0" # weekly, Sunday, 05:40 UTC
+        swarm.cronjob.skip-running: "true"
+
+  wfp-hungermap-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-wfp-hungermap.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 * * * *" # hourly, :55
+        swarm.cronjob.skip-running: "true"
+
+  live-flights-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-live-flights.ts"]
+    deploy:
+      <<: *raster-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 */5 * * * *" # every 5 minutes
+        swarm.cronjob.skip-running: "true"
+
+  # ── Manual-only (no swarm-cronjob label) ──────────────────────────────
+  meta-downloader:
+    <<: *raster-job
+    command: ["raster-importer/download-meta.ts"]
+    environment:
+      - RASTER_IMPORT_MANIFEST=/manifest.json
+      - RASTERS_DIR=/rasters
+    volumes:
+      - ${RASTER_DB_PATH:-/var/lib/mhews/rasters}:/rasters
+      - ${REPO_ROOT}/raster-importer/manifest.json:/manifest.json
+    deploy: *raster-job-deploy
+
+  meta-ghsl-importer:
+    <<: *raster-job
+    # No command override — uses the image's default CMD
+    # (raster-importer/import.ts, the manifest-driven importer).
+    environment:
+      - RASTER_IMPORT_MANIFEST=/manifest.json
+    volumes:
+      - ${RASTER_DB_PATH:-/var/lib/mhews/rasters}:/rasters:ro
+      - ${REPO_ROOT}/raster-importer/manifest.json:/manifest.json:ro
+    deploy: *raster-job-deploy
+
+  dem-slope-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-dem-slope.ts"]
+    deploy: *raster-job-deploy
+
+  building-footprints-importer:
+    <<: *raster-job
+    command: ["raster-importer/import-building-footprints.ts"]
+    deploy: *raster-job-deploy
+
+  backfill-exposure-h3-cells:
+    <<: *raster-job
+    command: ["raster-importer/backfill-exposure-h3-cells.ts"]
+    deploy: *raster-job-deploy
+
+networks:
+  mhews:
+    external: true
+    name: mhews

@@ -1,0 +1,124 @@
+version: "3.9"
+
+# Core always-on application services — migrated from repo-root
+# docker-compose.yml's aggregator/netcdf-service/tileserver/frontend.
+#
+# Swarm does NOT build images from a `build:` key (it's silently ignored by
+# `docker stack deploy`) — aggregator/netcdf-service/frontend are prebuilt
+# and pushed to GHCR by their .github/workflows/docker-build-*.yml, then
+# pulled from there on `docker stack deploy` (see swarm/README.md).
+
+services:
+  aggregator:
+    image: ghcr.io/argidon/mhews-aggregator:latest
+    environment:
+      - NODE_ENV=production
+    # env_file:
+    #   - ../env/.env
+    ports:
+      - target: 8765
+        published: 8765
+        mode: host
+    networks:
+      - mhews
+    healthcheck:
+      # aggregator/src/index.js already serves this — see docs/
+      # MHEWS_system_architecture.md, which documented this healthcheck
+      # before it was ever wired into repo-root docker-compose.yml.
+      test: ["CMD", "wget", "-qO-", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0 # 0 = unlimited, matches today's `restart: unless-stopped`
+      update_config:
+        order: start-first
+
+  netcdf-service:
+    image: ghcr.io/argidon/mhews-netcdf-service:latest
+    environment:
+      - NETCDF_CACHE_DIR=/cache
+    volumes:
+      - netcdf-cache:/cache
+    networks:
+      - mhews
+    healthcheck:
+      # Same check already in netcdf-service/Dockerfile's own HEALTHCHECK —
+      # repeated here so `docker service ps` / Swarm's reschedule-on-
+      # unhealthy behavior sees it too (Dockerfile HEALTHCHECK alone is
+      # visible to `docker inspect` but Swarm only acts on the one declared
+      # in the service spec).
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+
+  tileserver:
+    image: maptiler/tileserver-gl:latest
+    ports:
+      - target: 8080
+        published: 8081
+        mode: host
+    volumes:
+      - ${REPO_ROOT}/tiles:/data
+    networks:
+      - mhews
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+
+  frontend:
+    image: ghcr.io/argidon/mhews-frontend:latest
+    environment:
+      - VITE_SUPABASE_URL
+      - VITE_SUPABASE_ANON_KEY
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    volumes:
+      - ${REPO_ROOT}/ssl:/etc/ssl/mhews:ro
+    networks:
+      - mhews
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+
+networks:
+  mhews:
+    external: true
+    name: mhews
+
+volumes:
+  netcdf-cache:

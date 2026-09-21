@@ -1,0 +1,38 @@
+version: "3.9"
+
+# swarm-cronjob — watches every Swarm Job service in this stack for the
+# `swarm.cronjob.*` labels (set on each job in raster-importer-jobs.yml /
+# wind-importer-jobs.yml) and triggers them on schedule via
+# `docker service update --force`. Swarm has no native scheduler for Jobs —
+# this is the one piece that provides it, chosen over host-level cron
+# specifically to avoid reintroducing the "host-OS scheduler dependency"
+# this project's own raster-importer/cron.ts deliberately avoided.
+#
+# Needs access to the Docker socket on the manager node to see/trigger
+# other services — run only on a manager, and treat that socket access as
+# sensitive (equivalent to root on this node).
+#
+# TODO(decision): pin crazymax/swarm-cronjob to a specific version tag
+# instead of `latest` before relying on this in production — see
+# swarm/README.md.
+
+services:
+  scheduler:
+    image: crazymax/swarm-cronjob:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - mhews
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+
+networks:
+  mhews:
+    external: true
+    name: mhews

@@ -1,0 +1,409 @@
+version: "3.9"
+
+# wind-importer Swarm Jobs — Python + GDAL, wind/ocean/atmosphere forecast
+# layers. 36 independent Job services, one per data source (schedule
+# matches PLAN.md §3's job schedule table) — no grouping, each with its own
+# swarm-cronjob label.
+#
+# All commands run against ghcr.io/argidon/mhews-wind-importer:latest, built
+# from wind-importer/Dockerfile and pushed to GHCR by
+# .github/workflows/docker-build-wind-importer.yml, and all pass `--once`
+# (main.py without it loops forever in-process — wrong for a Job, which
+# must run to completion and exit).
+#
+# `S` in the comments below = each GFS cycle start (00:00 / 06:00 / 12:00 /
+# 18:00 UTC, 4x daily) — see PLAN.md §3 for how each offset was derived.
+# swarm-cronjob labels use its 6-field cron format (seconds first):
+# sec min hour day-of-month month day-of-week.
+
+x-wind-job: &wind-job
+  image: ghcr.io/argidon/mhews-wind-importer:latest
+  networks:
+    - mhews
+  # env_file:
+  #   - ../env/.env
+
+x-wind-job-deploy: &wind-job-deploy
+  mode: replicated-job
+  restart_policy:
+    condition: on-failure
+    max_attempts: 3
+
+services:
+  # Forecast tier first (heaviest/longest-running — each loops over many
+  # variables/steps internally — so a slow run has the most runway before
+  # its own next 6h trigger).
+  #
+  # swarm-cronjob reads labels from `deploy.labels` — a Swarm SERVICE's
+  # labels, not a container's top-level `labels:` — since that's what
+  # `docker service inspect`/the Docker API expose to label-watching tools
+  # like swarm-cronjob.
+  forecast-15d-importer:
+    <<: *wind-job
+    command: ["--forecast-horizon=15d", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 5 0,6,12,18 * * *" # S+5m
+        swarm.cronjob.skip-running: "true"
+
+  forecast-1mo-importer:
+    <<: *wind-job
+    command: ["--forecast-horizon=1mo", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 15 0,6,12,18 * * *" # S+15m
+        swarm.cronjob.skip-running: "true"
+
+  forecast-3mo-importer:
+    <<: *wind-job
+    command: ["--forecast-horizon=3mo", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 25 0,6,12,18 * * *" # S+25m
+        swarm.cronjob.skip-running: "true"
+
+  # Flow layers (Animate: Wind/Currents/Waves).
+  wind-importer:
+    <<: *wind-job
+    command: ["--layer-type=wind", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 35 0,6,12,18 * * *" # S+35m
+        swarm.cronjob.skip-running: "true"
+
+  wind-levels-importer:
+    <<: *wind-job
+    command: ["--layer-type=wind", "--levels=1000,850,700,500,250,70,10", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 45 0,6,12,18 * * *" # S+45m
+        swarm.cronjob.skip-running: "true"
+
+  currents-importer:
+    <<: *wind-job
+    command: ["--layer-type=ocean_current", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 0,6,12,18 * * *" # S+55m
+        swarm.cronjob.skip-running: "true"
+
+  waves-importer:
+    <<: *wind-job
+    command: ["--layer-type=wave", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 5 1,7,13,19 * * *" # S+65m
+        swarm.cronjob.skip-running: "true"
+
+  significant-wave-height-importer:
+    <<: *wind-job
+    command: ["--overlay-type=significant_wave_height", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 15 1,7,13,19 * * *" # S+75m
+        swarm.cronjob.skip-running: "true"
+
+  # Air mode — GFS-native scalar overlays.
+  temperature-importer:
+    <<: *wind-job
+    command: ["--overlay-type=temperature", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 25 1,7,13,19 * * *" # S+85m
+        swarm.cronjob.skip-running: "true"
+
+  temperature-levels-importer:
+    <<: *wind-job
+    command: ["--overlay-type=temperature", "--levels=1000,850,700,500,250,70,10", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 35 1,7,13,19 * * *" # S+95m
+        swarm.cronjob.skip-running: "true"
+
+  relative-humidity-importer:
+    <<: *wind-job
+    command: ["--overlay-type=relative_humidity", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 45 1,7,13,19 * * *" # S+105m
+        swarm.cronjob.skip-running: "true"
+
+  relative-humidity-levels-importer:
+    <<: *wind-job
+    command: ["--overlay-type=relative_humidity", "--levels=1000,850,700,500,250,70,10", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 1,7,13,19 * * *" # S+115m
+        swarm.cronjob.skip-running: "true"
+
+  mslp-importer:
+    <<: *wind-job
+    command: ["--overlay-type=mean_sea_level_pressure", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 5 2,8,14,20 * * *" # S+125m
+        swarm.cronjob.skip-running: "true"
+
+  cape-importer:
+    <<: *wind-job
+    command: ["--overlay-type=cape", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 15 2,8,14,20 * * *" # S+135m
+        swarm.cronjob.skip-running: "true"
+
+  pwat-importer:
+    <<: *wind-job
+    command: ["--overlay-type=total_precipitable_water", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 25 2,8,14,20 * * *" # S+145m
+        swarm.cronjob.skip-running: "true"
+
+  cwat-importer:
+    <<: *wind-job
+    command: ["--overlay-type=total_cloud_water", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 35 2,8,14,20 * * *" # S+155m
+        swarm.cronjob.skip-running: "true"
+
+  precip-3hr-importer:
+    <<: *wind-job
+    command: ["--overlay-type=precip_3hr", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 45 2,8,14,20 * * *" # S+165m
+        swarm.cronjob.skip-running: "true"
+
+  wbt-importer:
+    <<: *wind-job
+    command: ["--overlay-type=wet_bulb_temp", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 2,8,14,20 * * *" # S+175m
+        swarm.cronjob.skip-running: "true"
+
+  dew-point-importer:
+    <<: *wind-job
+    command: ["--overlay-type=dew_point", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 5 3,9,15,21 * * *" # S+185m
+        swarm.cronjob.skip-running: "true"
+
+  wpd-importer:
+    <<: *wind-job
+    command: ["--overlay-type=wind_power_density", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 15 3,9,15,21 * * *" # S+195m
+        swarm.cronjob.skip-running: "true"
+
+  misery-index-importer:
+    <<: *wind-job
+    command: ["--overlay-type=misery_index", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 25 3,9,15,21 * * *" # S+205m
+        swarm.cronjob.skip-running: "true"
+
+  uvi-importer:
+    <<: *wind-job
+    command: ["--overlay-type=uv_index", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 35 3,9,15,21 * * *" # S+215m
+        swarm.cronjob.skip-running: "true"
+
+  # Particulates/Chem mode — CAMS-sourced overlays.
+  overlay-importer:
+    <<: *wind-job
+    command: ["--overlay-type=air_quality_pm25", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 45 3,9,15,21 * * *" # S+225m
+        swarm.cronjob.skip-running: "true"
+
+  pm1-importer:
+    <<: *wind-job
+    command: ["--overlay-type=pm1", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 3,9,15,21 * * *" # S+235m
+        swarm.cronjob.skip-running: "true"
+
+  pm10-importer:
+    <<: *wind-job
+    command: ["--overlay-type=pm10", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 5 4,10,16,22 * * *" # S+245m
+        swarm.cronjob.skip-running: "true"
+
+  dust-aod-importer:
+    <<: *wind-job
+    command: ["--overlay-type=dust_aod", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 15 4,10,16,22 * * *" # S+255m
+        swarm.cronjob.skip-running: "true"
+
+  organic-matter-aod-importer:
+    <<: *wind-job
+    command: ["--overlay-type=organic_matter_aod", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 25 4,10,16,22 * * *" # S+265m
+        swarm.cronjob.skip-running: "true"
+
+  sulfate-aod-importer:
+    <<: *wind-job
+    command: ["--overlay-type=sulfate_aod", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 35 4,10,16,22 * * *" # S+275m
+        swarm.cronjob.skip-running: "true"
+
+  co-importer:
+    <<: *wind-job
+    command: ["--overlay-type=co_surface", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 45 4,10,16,22 * * *" # S+285m
+        swarm.cronjob.skip-running: "true"
+
+  so2-importer:
+    <<: *wind-job
+    command: ["--overlay-type=so2_surface", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 4,10,16,22 * * *" # S+295m
+        swarm.cronjob.skip-running: "true"
+
+  no2-importer:
+    <<: *wind-job
+    command: ["--overlay-type=no2_surface", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 5 5,11,17,23 * * *" # S+305m
+        swarm.cronjob.skip-running: "true"
+
+  co2-importer:
+    <<: *wind-job
+    command: ["--overlay-type=co2_surface", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 15 5,11,17,23 * * *" # S+315m
+        swarm.cronjob.skip-running: "true"
+
+  # Space mode.
+  aurora-importer:
+    <<: *wind-job
+    command: ["--overlay-type=aurora", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 25 5,11,17,23 * * *" # S+325m
+        swarm.cronjob.skip-running: "true"
+
+  # Ocean mode — CMEMS-native overlays + BAA.
+  sst-importer:
+    <<: *wind-job
+    command: ["--overlay-type=sea_surface_temperature", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 35 5,11,17,23 * * *" # S+335m
+        swarm.cronjob.skip-running: "true"
+
+  ssta-importer:
+    <<: *wind-job
+    command: ["--overlay-type=sea_surface_temperature_anomaly", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 45 5,11,17,23 * * *" # S+345m
+        swarm.cronjob.skip-running: "true"
+
+  baa-importer:
+    <<: *wind-job
+    command: ["--overlay-type=coral_bleaching_alert", "--once"]
+    deploy:
+      <<: *wind-job-deploy
+      labels:
+        swarm.cronjob.enable: "true"
+        swarm.cronjob.schedule: "0 55 5,11,17,23 * * *" # S+355m
+        swarm.cronjob.skip-running: "true"
+
+networks:
+  mhews:
+    external: true
+    name: mhews

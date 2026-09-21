@@ -96,3 +96,4 @@ Copy and paste these values into `./infra/secrets/secrets.txt`:
 | `GRAFANA_READONLY_PASSWORD` password you entered above | `GRAFANA_READONLY_PASSWORD` |
 | `DATA_SOURCE_NAME` | Data source name for postgres exporter. `DATA_SOURCE_NAME=postgresql://postgres_exporter:<EXPORTER_READONLY_PASSWORD>@<host-ip>:5432/postgres?sslmode=disable`  |
 | `DATA_SOURCE_NAME_GRAFANA` | Data source name for Grafana `DATA_SOURCE_NAME_GRAFANA=postgresql://grafana_reader:<GRAFANA_READONLY_PASSWORD>@<host-ip>:5432/postgres?sslmode=disable` |
+| `POSTGRES_PASSWORD` |`POSTGRES_PASSWORD` |
